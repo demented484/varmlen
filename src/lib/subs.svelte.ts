@@ -93,12 +93,14 @@ function deriveSubName(result: ImportResult, url: string): string {
   }
 }
 
+// Hydrate from localStorage once when the module first loads, before the
+// SubsStore class fields are evaluated. (Referencing `this` from inside a
+// `$state(...)` field initialiser blew up Svelte 5's compiled output.)
+const _initialSubs = load();
+
 class SubsStore {
-  // Initialised at construction time from localStorage so consumers can
-  // read state synchronously on first import; no onMount() round-trip.
-  private readonly _initial = load();
-  list = $state<Subscription[]>(this._initial.subs);
-  selectedServerId = $state<string | null>(this._initial.selectedServerId);
+  list = $state<Subscription[]>(_initialSubs.subs);
+  selectedServerId = $state<string | null>(_initialSubs.selectedServerId);
   importing = $state(false);
 
   private persist(): void {
