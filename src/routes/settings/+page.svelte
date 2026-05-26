@@ -303,10 +303,8 @@
                       disabled={isSwitching}
                       title={t("core.delete")}
                     >
-                      <svg class="btn-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"
-                          stroke="currentColor" stroke-width="1.9"
-                          stroke-linecap="round" stroke-linejoin="round" />
+                      <svg class="btn-ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M9 3a1 1 0 0 0-1 1v1H4a1 1 0 1 0 0 2h1l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13h1a1 1 0 1 0 0-2h-4V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-3 3h10l-.9 12.1a.1.1 0 0 1-.1.1H8.1a.1.1 0 0 1-.1-.1L7 8zm3 2a1 1 0 0 0-1 1v6a1 1 0 1 0 2 0v-6a1 1 0 0 0-1-1zm4 0a1 1 0 0 0-1 1v6a1 1 0 1 0 2 0v-6a1 1 0 0 0-1-1z" />
                       </svg>
                       <span>{t("core.delete")}</span>
                     </button>
@@ -318,21 +316,22 @@
                     >
                       {isSwitching ? "…" : t("core.use")}
                     </button>
-                    <!-- Non-active row uses an icon-only delete to keep the
-                         row compact; same destructive palette as the "Delete"
-                         text button on the active row. -->
+                    <!-- Non-active row: a proper text+icon Delete button
+                         (matching the active row's). The earlier icon-only
+                         square rendered as an unrecognisable red dot in
+                         WebKitGTK — the multi-subpath SVG was being clipped
+                         or simplified out by the renderer. Plain text is
+                         unambiguous. -->
                     <button
-                      class="ico-del"
+                      class="btn btn-sm btn-danger"
                       onclick={() => core.uninstall(r.tag)}
                       disabled={isSwitching}
-                      aria-label={t("core.delete")}
                       title={t("core.delete")}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"
-                          stroke="currentColor" stroke-width="2"
-                          stroke-linecap="round" stroke-linejoin="round" />
+                      <svg class="btn-ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M9 3a1 1 0 0 0-1 1v1H4a1 1 0 1 0 0 2h1l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13h1a1 1 0 1 0 0-2h-4V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-3 3h10l-.9 12.1a.1.1 0 0 1-.1.1H8.1a.1.1 0 0 1-.1-.1L7 8zm3 2a1 1 0 0 0-1 1v6a1 1 0 1 0 2 0v-6a1 1 0 0 0-1-1zm4 0a1 1 0 0 0-1 1v6a1 1 0 1 0 2 0v-6a1 1 0 0 0-1-1z" />
                       </svg>
+                      <span>{t("core.delete")}</span>
                     </button>
                   {:else}
                     <button
@@ -642,29 +641,6 @@
     border-color: var(--danger);
   }
 
-  /* Compact icon-only delete used on non-active downloaded versions. Same
-     red palette as .btn-danger; bumped contrast so the trash icon actually
-     reads at a glance (the muted-border + thin-stroke version was nearly
-     invisible against the modal background). */
-  .ico-del {
-    background: var(--danger-faint);
-    border: 1px solid var(--danger);
-    color: var(--danger);
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background var(--transition), border-color var(--transition);
-    flex-shrink: 0;
-  }
-  .ico-del:hover:not(:disabled) {
-    background: var(--danger);
-    color: #fff;
-  }
-  .ico-del:disabled { opacity: 0.45; cursor: default; }
 
   /* Download progress: filled bar + bytes/speed line. */
   .progress {

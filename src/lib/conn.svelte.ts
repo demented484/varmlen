@@ -72,6 +72,12 @@ class ConnStore {
     }
     this.status = "connecting";
     this.lastSig = this.configSig();
+    // Hold the "connecting" indicator visible for at least this long even
+    // when the helper rejects in <50ms — otherwise the spinner / animated
+    // ring is gone before the user perceives it, and a fast failure looks
+    // like "the button does nothing".
+    const startedAt = Date.now();
+    const MIN_CONNECTING_MS = 700;
     try {
       const resp = await vpnConnect(
         server,
@@ -80,9 +86,13 @@ class ConnStore {
         settings.killswitch,
         settings.allowLan,
       );
+      const remain = MIN_CONNECTING_MS - (Date.now() - startedAt);
+      if (remain > 0) await new Promise((r) => setTimeout(r, remain));
       if (!resp.ok) throw new Error(resp.error || "connection failed");
       this.status = "connected";
     } catch (e) {
+      const remain = MIN_CONNECTING_MS - (Date.now() - startedAt);
+      if (remain > 0) await new Promise((r) => setTimeout(r, remain));
       this.error = msg(e);
       this.status = "disconnected";
     }
