@@ -264,6 +264,15 @@ fn apply_killswitch(server_ips: &[std::net::IpAddr], allow_lan: bool) -> Result<
     r.push_str("    oifname \"lo\" counter accept\n");
     r.push_str("    oifname \"aegis0\" counter accept\n");
     r.push_str("    ct state established,related counter accept\n");
+    // sing-box's auto_redirect mode TPROXY-redirects TCP to a local listener
+    // (e.g. 127.0.0.1:46485). The kernel routes those packets out a real WAN
+    // interface (enp11s0/wlan0) for arcane policy-routing reasons, so the
+    // `oifname lo` rule above misses them and the final drop eats every
+    // user TCP SYN. `fib daddr type local` accepts any packet whose
+    // destination is an address local to this host, which is exactly what
+    // we want here (loopback + any other interface address). Safe — these
+    // packets are by definition not leaving the machine.
+    r.push_str("    fib daddr type local counter accept\n");
     // sing-box marks every packet it originates itself (its own DNS lookups,
     // direct-outbound connections, etc.) with its routing mark — 0x2023/0x2024
     // are the standard values used by its auto_redirect + tproxy setup.
@@ -302,6 +311,14 @@ fn apply_killswitch(server_ips: &[std::net::IpAddr], allow_lan: bool) -> Result<
     }
     // Explicit terminal drop with a counter — what arrives here is what the
     // killswitch is killing. Diagnostic gold.
+    //
+    // `log prefix` writes one kernel-log line per dropped packet (visible via
+    // `journalctl -k`), with the 5-tuple. When the killswitch breaks the
+    // tunnel, this tells us EXACTLY which packets are being killed instead of
+    // having to guess from a byte counter. Rate-limited so a flood can't
+    // spam the journal. Stripped from production once we're confident the
+    // ruleset is right.
+    r.push_str("    limit rate 30/second log prefix \"aegis_ks_drop \" level info\n");
     r.push_str("    counter drop\n");
     r.push_str("  }\n}\n");
 
