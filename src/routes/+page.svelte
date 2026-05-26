@@ -508,12 +508,16 @@
   .status-text[data-status="connected"] { color: var(--accent); }
   .status-text[data-status="connecting"] { color: var(--accent); }
   .conn-error {
-    margin-top: 6px;
-    max-width: 280px;
+    margin-top: 10px;
+    max-width: 340px;
     text-align: center;
-    font-size: 12px;
+    font-size: 13px;
     color: var(--danger);
-    line-height: 1.4;
+    background: var(--danger-faint);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    line-height: 1.45;
   }
 
 
