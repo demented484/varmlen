@@ -15,12 +15,12 @@ import android.service.quicksettings.TileService
 class VarmlenTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
-        setTile(VarmlenVpnService.running)
+        setTile(VarmlenVpnService.isRunning(this))
     }
 
     override fun onClick() {
         super.onClick()
-        if (VarmlenVpnService.running) {
+        if (VarmlenVpnService.isRunning(this)) {
             VarmlenVpnService.stop(this)
             setTile(false)
             return

@@ -81,7 +81,7 @@ class VpnPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun status(invoke: Invoke) {
         val ret = JSObject()
-        ret.put("running", VarmlenVpnService.running)
+        ret.put("running", VarmlenVpnService.isRunning(activity))
         invoke.resolve(ret)
     }
 

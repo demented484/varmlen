@@ -37,10 +37,18 @@ class VarmlenVpnService : VpnService() {
         private const val TUN_ADDR = "10.10.10.2"
         private const val MTU = 8500
         private const val PREFS = "varmlen_vpn"
+        private const val RUNNING_FILE = "running.flag"
 
-        @Volatile
-        var running = false
-            private set
+        /** Cross-process running flag. The service runs in its own process
+         *  (:vpn), so the main process (plugin / tile) can't read a static — it
+         *  reads this file in the shared filesDir instead. Doubles as the
+         *  "should be running" flag for START_STICKY restart recovery. */
+        fun isRunning(ctx: Context): Boolean =
+            try { File(ctx.filesDir, RUNNING_FILE).readText() == "1" } catch (_: Throwable) { false }
+
+        private fun setRunning(ctx: Context, on: Boolean) {
+            try { File(ctx.filesDir, RUNNING_FILE).writeText(if (on) "1" else "0") } catch (_: Throwable) {}
+        }
 
         /** Whether a previous connect saved a config we can re-launch without
          *  the app being open (used by the Quick Settings tile). */
@@ -101,9 +109,27 @@ class VarmlenVpnService : VpnService() {
                     stopAll()
                 }
             }
+            else -> {
+                // Restarted by the system (START_STICKY, null intent after an
+                // OOM kill). Re-establish from the saved config if we were meant
+                // to be running; otherwise stop.
+                if (isRunning(this) && hasSavedConfig(this)) {
+                    log("auto-restart from saved config")
+                    start(this)
+                } else {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
         }
-        // NOT_STICKY: never auto-restart (a restart loop made the app unlaunchable).
-        return START_NOT_STICKY
+        // STICKY: if the OS kills us, restart and (above) re-establish the tunnel.
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Keep the VPN alive when the app is swiped from recents — do NOT stop.
+        log("task removed — VPN stays up")
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun startAll(
@@ -179,7 +205,7 @@ class VarmlenVpnService : VpnService() {
         log("tun2socks starting (native)")
         TProxyService.TProxyStartService(hevFile.absolutePath, fd.fd)
 
-        running = true
+        setRunning(this, true)
         log("connected")
     }
 
@@ -193,7 +219,7 @@ class VarmlenVpnService : VpnService() {
     }
 
     private fun stopAll() {
-        running = false
+        setRunning(this, false)
         teardown()
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
         stopSelf()
