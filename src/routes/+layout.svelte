@@ -57,6 +57,16 @@
   // "disconnected".
   onMount(() => void conn.refresh());
 
+  // Re-sync when the app returns to the foreground — the VPN may have been
+  // toggled from the Quick Settings tile / notification while we were away.
+  onMount(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") void conn.refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  });
+
   // Auto-refresh subscriptions on their server-advertised interval (the UI
   // shows "auto-update Nh"); checks on launch and periodically thereafter.
   onMount(() => subs.startAutoRefresh());

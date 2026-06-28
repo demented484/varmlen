@@ -53,10 +53,13 @@ class ConnStore {
   /** Signature of the config last applied, to avoid redundant reconnects. */
   private lastSig: string | null = null;
 
-  /** Signature of everything that affects the generated config. */
+  /** Signature of everything that affects the generated config. Keyed on the
+   *  stable host:port (NOT the per-entry id, which is regenerated on every
+   *  refresh) so refreshing a subscription doesn't look like a config change
+   *  and trigger a needless reconnect. */
   private configSig(): string {
     return JSON.stringify({
-      server: subs.selectedServerId,
+      server: subs.selectedKey,
       mode: settings.vpnMode,
       killswitch: settings.killswitch,
       allowLan: settings.allowLan,

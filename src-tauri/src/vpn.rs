@@ -433,11 +433,12 @@ pub async fn vpn_connect(
     // Android: hand the generated config to the VpnService bridge. The native
     // tun + tun2socks + bundled xray live in the Kotlin VpnPlugin; the kill
     // switch / routing are the OS's job there.
+    let level = log_level.unwrap_or_else(|| "warn".to_string());
     #[cfg(target_os = "android")]
     {
         let _ = killswitch;
         let xray_cfg = serde_json::to_string(&build_xray_config(
-            &server, &split, &mode, TunMode::Tun2socks, allow_lan,
+            &server, &split, &mode, TunMode::Tun2socks, allow_lan, &level,
         ))
         .map_err(|e| e.to_string())?;
         // apps_allow = whitelist apps (only listed apps enter the tun). This is
@@ -450,14 +451,13 @@ pub async fn vpn_connect(
             crate::xray::XRAY_SOCKS_PORT,
             split.apps.clone(),
             apps_allow,
-            log_level.unwrap_or_else(|| "warn".to_string()),
+            level,
         )?;
         return Ok(HelperResponse::connected(0));
     }
 
     #[cfg(not(target_os = "android"))]
     {
-    let _ = log_level;
     // Hold the op lock for the whole connect so it can't interleave with another
     // connect/disconnect and orphan a tunnel.
     let _op = vpn_op_lock().lock().await;
@@ -467,6 +467,7 @@ pub async fn vpn_connect(
         &mode,
         TunMode::XrayNative,
         allow_lan,
+        &level,
     ))
     .map_err(|e| e.to_string())?;
     // Validation config: a SOCKS-inbound variant with the SAME routing /
@@ -480,6 +481,7 @@ pub async fn vpn_connect(
         &mode,
         TunMode::Tun2socks,
         allow_lan,
+        &level,
     ))
     .map_err(|e| e.to_string())?;
     let server_host = server.host.clone();

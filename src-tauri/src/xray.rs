@@ -460,6 +460,18 @@ fn build_route_rules(
 }
 
 /// Full xray config for a connection.
+/// Map the UI log level (debug/warn/error) to xray's vocabulary (xray uses
+/// "warning", not "warn"; hev uses "warn").
+fn xray_loglevel(level: &str) -> &'static str {
+    match level {
+        "debug" => "debug",
+        "info" => "info",
+        "error" => "error",
+        "none" => "none",
+        _ => "warning",
+    }
+}
+
 /// `mode` is the connection mode: "tun" (system-wide) or "proxy" (local SOCKS
 /// only). `tun` selects how the tun is provided when `mode == "tun"`.
 pub fn build_xray_config(
@@ -468,11 +480,13 @@ pub fn build_xray_config(
     mode: &str,
     tun: TunMode,
     allow_lan: bool,
+    log_level: &str,
 ) -> Value {
+    let loglevel = xray_loglevel(log_level);
     if mode == "proxy" {
         // Local SOCKS only — apps opt in by pointing at it. No tun, no split.
         return json!({
-            "log": { "loglevel": "warning" },
+            "log": { "loglevel": loglevel },
             "dns": build_dns(),
             "inbounds": build_inbounds(TunMode::Tun2socks),
             "outbounds": [
@@ -489,7 +503,7 @@ pub fn build_xray_config(
     }
 
     json!({
-        "log": { "loglevel": "warning" },
+        "log": { "loglevel": loglevel },
         "dns": build_dns(),
         "inbounds": build_inbounds(tun),
         "outbounds": [
@@ -537,7 +551,7 @@ pub fn generate_xray_config(
     mode: String,
     allow_lan: bool,
 ) -> Result<String, String> {
-    let cfg = build_xray_config(&server, &split, &mode, TunMode::default(), allow_lan);
+    let cfg = build_xray_config(&server, &split, &mode, TunMode::default(), allow_lan, "warning");
     serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())
 }
 
@@ -565,7 +579,7 @@ mod tests {
             "vless://16ddb21e-5342-4a82-a870-1038b01b8dbc@46.29.238.157:443?type=xhttp&security=reality&encryption=none&sni=gateway.icloud.com&fp=firefox&pbk=PUBKEY&sid=SID&spx=%2F&path=%2F&mode=packet-up#NO",
         )
         .expect("parse");
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
 
         let out = &cfg["outbounds"][0];
         assert_eq!(out["protocol"], "vless");
@@ -591,7 +605,7 @@ mod tests {
             "vless://uuid-1@1.2.3.4:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=icloud.com&pbk=K&sid=ab&fp=chrome#X",
         )
         .expect("parse");
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         let out = &cfg["outbounds"][0];
         assert_eq!(out["settings"]["vnext"][0]["users"][0]["flow"], "xtls-rprx-vision");
         assert_eq!(out["streamSettings"]["network"], "tcp");
@@ -600,7 +614,7 @@ mod tests {
 
     fn stream_for(uri: &str) -> Value {
         let s = parse_proxy_uri(uri).expect("parse");
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         cfg["outbounds"][0]["streamSettings"].clone()
     }
 
@@ -661,7 +675,7 @@ mod tests {
         // Guard: the native tun inbound must NOT carry gateway/dns/iptables
         // fields — those are unverified upstream and the helper owns routing.
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?security=reality&pbk=K#X").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         let inb = &cfg["inbounds"][0];
         assert_eq!(inb["protocol"], "tun");
         assert_eq!(inb["settings"]["name"], TUN_NAME);
@@ -674,7 +688,7 @@ mod tests {
     #[test]
     fn tun2socks_mode_uses_socks_inbound() {
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?security=reality&pbk=K#X").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::Tun2socks, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::Tun2socks, true, "warning");
         let inb = &cfg["inbounds"][0];
         assert_eq!(inb["protocol"], "socks");
         assert_eq!(inb["port"], XRAY_SOCKS_PORT);
@@ -686,7 +700,7 @@ mod tests {
     #[test]
     fn proxy_and_direct_outbounds_carry_dial_mark() {
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?type=xhttp&security=reality&pbk=K#X").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         assert_eq!(cfg["outbounds"][0]["streamSettings"]["sockopt"]["mark"], XRAY_DIAL_MARK);
         assert_eq!(cfg["outbounds"][1]["streamSettings"]["sockopt"]["mark"], XRAY_DIAL_MARK);
         assert_eq!(cfg["outbounds"][1]["protocol"], "freedom");
@@ -697,7 +711,7 @@ mod tests {
         // Anti-leak: resolver is DoH (not a plaintext/localhost server), :53 is
         // hijacked into the DNS module, and the DoH upstream is forced to proxy.
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?type=xhttp&security=reality&pbk=K#X").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         assert_eq!(cfg["dns"]["servers"][0], "https://1.1.1.1/dns-query");
         let serialized = serde_json::to_string(&cfg).unwrap();
         assert!(!serialized.contains("localhost") && !serialized.contains("\"local\""));
@@ -721,7 +735,7 @@ mod tests {
             sites: vec!["*.ru".into(), "example.com".into()],
             ..Default::default()
         };
-        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true, "warning");
         let rules = cfg["routing"]["rules"].as_array().unwrap();
         // Every rule must carry type:field for cross-version safety.
         assert!(rules.iter().all(|r| r["type"] == "field"), "all rules need type:field");
@@ -748,7 +762,7 @@ mod tests {
             sites: vec!["example.com".into()],
             ..Default::default()
         };
-        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true, "warning");
         assert_eq!(cfg["routing"]["rules"].as_array().unwrap().last().unwrap()["outboundTag"], "direct");
         let proc_rule = rule_for(&cfg, "process").unwrap();
         assert_eq!(proc_rule["process"][0], "firefox");
@@ -760,7 +774,7 @@ mod tests {
     fn selective_sites_only_default_direct() {
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?security=reality&pbk=K#X").unwrap();
         let sp = SplitInput { apps_mode: "selective".into(), sites_mode: "selective".into(), sites: vec!["example.com".into()], ..Default::default() };
-        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true, "warning");
         assert_eq!(cfg["routing"]["rules"].as_array().unwrap().last().unwrap()["outboundTag"], "direct");
         assert_eq!(rule_for(&cfg, "domain").unwrap()["outboundTag"], "proxy");
         assert!(rule_for(&cfg, "process").is_none()); // no apps -> no process rule
@@ -784,7 +798,7 @@ mod tests {
             apps: vec!["firefox".into(), "telegram-desktop".into()],
             sites: vec!["*.ru".into(), "example.com".into()],
         };
-        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true, "warning");
         std::fs::write(
             "/tmp/varmlen_xray_sample.json",
             serde_json::to_string_pretty(&cfg).unwrap(),
@@ -799,7 +813,7 @@ mod tests {
         // before the DoH pin (ip:1.1.1.1 -> proxy), so the exclusion is honoured.
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?security=reality&pbk=K#X").unwrap();
         let sp = SplitInput { apps_mode: "general".into(), sites_mode: "general".into(), apps: vec!["firefox".into()], ..Default::default() };
-        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &sp, "tun", TunMode::XrayNative, true, "warning");
         let rules = cfg["routing"]["rules"].as_array().unwrap();
         let proc_idx = rules.iter().position(|r| r.get("process").is_some()).unwrap();
         let doh_idx = rules
@@ -812,7 +826,7 @@ mod tests {
     #[test]
     fn trojan_outbound_shape() {
         let s = parse_proxy_uri("trojan://secretpass@1.2.3.4:443?security=tls&sni=a.com#T").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         let out = &cfg["outbounds"][0];
         assert_eq!(out["protocol"], "trojan");
         assert_eq!(out["settings"]["servers"][0]["password"], "secretpass");
@@ -823,7 +837,7 @@ mod tests {
     #[test]
     fn shadowsocks_outbound_shape() {
         let s = parse_proxy_uri("ss://YWVzLTI1Ni1nY206c2VjcmV0@1.2.3.4:8388#S").unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         let out = &cfg["outbounds"][0];
         assert_eq!(out["protocol"], "shadowsocks");
         assert_eq!(out["settings"]["servers"][0]["method"], "aes-256-gcm");
@@ -839,7 +853,7 @@ mod tests {
         });
         let b64 = base64::engine::general_purpose::STANDARD.encode(payload.to_string());
         let s = parse_proxy_uri(&format!("vmess://{b64}")).unwrap();
-        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "tun", TunMode::XrayNative, true, "warning");
         let out = &cfg["outbounds"][0];
         assert_eq!(out["protocol"], "vmess");
         assert_eq!(out["settings"]["vnext"][0]["users"][0]["id"], "uuid-vm");
@@ -850,7 +864,7 @@ mod tests {
     #[test]
     fn proxy_mode_is_socks_only_no_tun() {
         let s = parse_proxy_uri("vless://u@1.2.3.4:443?type=xhttp&security=reality&pbk=K#X").unwrap();
-        let cfg = build_xray_config(&s, &split(), "proxy", TunMode::XrayNative, true);
+        let cfg = build_xray_config(&s, &split(), "proxy", TunMode::XrayNative, true, "warning");
         assert_eq!(cfg["inbounds"][0]["protocol"], "socks");
         assert!(cfg["inbounds"].as_array().unwrap().iter().all(|i| i["protocol"] != "tun"));
     }

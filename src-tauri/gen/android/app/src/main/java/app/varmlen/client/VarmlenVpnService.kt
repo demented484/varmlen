@@ -36,10 +36,36 @@ class VarmlenVpnService : VpnService() {
         private const val NOTIF_ID = 1
         private const val TUN_ADDR = "10.10.10.2"
         private const val MTU = 8500
+        private const val PREFS = "varmlen_vpn"
 
         @Volatile
         var running = false
             private set
+
+        /** Whether a previous connect saved a config we can re-launch without
+         *  the app being open (used by the Quick Settings tile). */
+        fun hasSavedConfig(ctx: Context): Boolean =
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("config", null) != null
+
+        /** Re-launch the VPN from the last saved config (tile / shade). */
+        fun start(ctx: Context) {
+            val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val config = p.getString("config", null) ?: return
+            val i = Intent(ctx, VarmlenVpnService::class.java).setAction(ACTION_CONNECT)
+            i.putExtra(EXTRA_CONFIG, config)
+            i.putExtra(EXTRA_SOCKS_PORT, p.getInt("socksPort", 2081))
+            i.putExtra(EXTRA_DNS, p.getString("dns", "1.1.1.1"))
+            i.putExtra(EXTRA_APPS, (p.getStringSet("apps", emptySet()) ?: emptySet()).toTypedArray())
+            i.putExtra(EXTRA_APPS_ALLOW, p.getBoolean("appsAllow", false))
+            i.putExtra(EXTRA_LOG_LEVEL, p.getString("logLevel", "warn"))
+            ctx.startService(i)
+        }
+
+        fun stop(ctx: Context) {
+            ctx.startService(
+                Intent(ctx, VarmlenVpnService::class.java).setAction(ACTION_DISCONNECT)
+            )
+        }
     }
 
     /** Append a line to filesDir/varmlen.log so the in-app log viewer (and Rust)
@@ -85,6 +111,16 @@ class VarmlenVpnService : VpnService() {
         apps: Array<String>, appsAllow: Boolean, logLevel: String
     ) {
         log("startAll socksPort=$socksPort dns=$dns apps=${apps.size} allow=$appsAllow level=$logLevel")
+        // Remember the connect params so the Quick Settings tile can re-launch
+        // the VPN without the app being open.
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("config", config)
+            .putInt("socksPort", socksPort)
+            .putString("dns", dns)
+            .putStringSet("apps", apps.toSet())
+            .putBoolean("appsAllow", appsAllow)
+            .putString("logLevel", logLevel)
+            .apply()
         // Tear down any previous instance first — a reconnect (e.g. after a split
         // change) must not stack a second xray on the same port or clobber hev's
         // single work thread.
@@ -181,15 +217,21 @@ class VarmlenVpnService : VpnService() {
                 this, 0, Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
+            val stopIntent = PendingIntent.getService(
+                this, 1,
+                Intent(this, VarmlenVpnService::class.java).setAction(ACTION_DISCONNECT),
+                PendingIntent.FLAG_IMMUTABLE
+            )
             val notif: Notification = Notification.Builder(this, CHANNEL)
                 .setContentTitle("Varmlen")
                 .setContentText("VPN active")
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setSmallIcon(R.drawable.ic_tile)
                 .setContentIntent(open)
+                .addAction(Notification.Action.Builder(null, "Disconnect", stopIntent).build())
                 .setOngoing(true)
                 .build()
             if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+                startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(NOTIF_ID, notif)
             }
