@@ -37,18 +37,27 @@ class VarmlenVpnService : VpnService() {
         private const val TUN_ADDR = "10.10.10.2"
         private const val MTU = 8500
         private const val PREFS = "varmlen_vpn"
-        private const val RUNNING_FILE = "running.flag"
+        private const val WANT_FILE = "vpn_want.flag"
 
-        /** Cross-process running flag. The service runs in its own process
-         *  (:vpn), so the main process (plugin / tile) can't read a static — it
-         *  reads this file in the shared filesDir instead. Doubles as the
-         *  "should be running" flag for START_STICKY restart recovery. */
-        fun isRunning(ctx: Context): Boolean =
-            try { File(ctx.filesDir, RUNNING_FILE).readText() == "1" } catch (_: Throwable) { false }
+        /** Actual running state — the SOURCE OF TRUTH for the UI/tile. Checks the
+         *  app's running services (works cross-process for our own service)
+         *  rather than a persisted flag, so a flag left over after a reboot /
+         *  force-stop / system disconnect can't show a phantom "connected". */
+        fun isRunning(ctx: Context): Boolean = try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            @Suppress("DEPRECATION")
+            am.getRunningServices(Int.MAX_VALUE).any {
+                it.service.className == VarmlenVpnService::class.java.name
+            }
+        } catch (_: Throwable) { false }
 
-        private fun setRunning(ctx: Context, on: Boolean) {
-            try { File(ctx.filesDir, RUNNING_FILE).writeText(if (on) "1" else "0") } catch (_: Throwable) {}
+        /** Persisted "should be running" — used ONLY for START_STICKY restart
+         *  recovery (do we re-establish after an OOM kill?), never for the UI. */
+        private fun setWant(ctx: Context, on: Boolean) {
+            try { File(ctx.filesDir, WANT_FILE).writeText(if (on) "1" else "0") } catch (_: Throwable) {}
         }
+        private fun wantsRunning(ctx: Context): Boolean =
+            try { File(ctx.filesDir, WANT_FILE).readText() == "1" } catch (_: Throwable) { false }
 
         /** Whether a previous connect saved a config we can re-launch without
          *  the app being open (used by the Quick Settings tile). */
@@ -113,7 +122,7 @@ class VarmlenVpnService : VpnService() {
                 // Restarted by the system (START_STICKY, null intent after an
                 // OOM kill). Re-establish from the saved config if we were meant
                 // to be running; otherwise stop.
-                if (isRunning(this) && hasSavedConfig(this)) {
+                if (wantsRunning(this) && hasSavedConfig(this)) {
                     log("auto-restart from saved config")
                     start(this)
                 } else {
@@ -205,7 +214,7 @@ class VarmlenVpnService : VpnService() {
         log("tun2socks starting (native)")
         TProxyService.TProxyStartService(hevFile.absolutePath, fd.fd)
 
-        setRunning(this, true)
+        setWant(this, true)
         log("connected")
     }
 
@@ -219,10 +228,17 @@ class VarmlenVpnService : VpnService() {
     }
 
     private fun stopAll() {
-        setRunning(this, false)
+        setWant(this, false)
         teardown()
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
         stopSelf()
+    }
+
+    override fun onRevoke() {
+        // The system (or another VPN / the user via system settings) revoked us.
+        log("VPN revoked by system")
+        stopAll()
+        super.onRevoke()
     }
 
     override fun onDestroy() {
