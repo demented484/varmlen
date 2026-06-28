@@ -118,6 +118,7 @@ class ConnStore {
         settings.vpnMode,
         settings.killswitch,
         settings.allowLan,
+        settings.logLevel,
       );
       const remain = MIN_CONNECTING_MS - (Date.now() - startedAt);
       if (remain > 0) await new Promise((r) => setTimeout(r, remain));

@@ -19,6 +19,7 @@ class ConnectArgs {
     var dns: String = "1.1.1.1"
     var apps: Array<String> = arrayOf()
     var appsAllow: Boolean = false
+    var logLevel: String = "warn"
 }
 
 /** Tauri bridge: the Rust `vpn_connect`/`vpn_disconnect` commands call into this
@@ -68,6 +69,20 @@ class VpnPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve(ret)
     }
 
+    @Command
+    fun readLog(invoke: Invoke) {
+        val ret = JSObject()
+        val f = java.io.File(activity.filesDir, VarmlenVpnService.LOG_FILE)
+        ret.put("log", if (f.exists()) f.readText() else "")
+        invoke.resolve(ret)
+    }
+
+    @Command
+    fun clearLog(invoke: Invoke) {
+        try { java.io.File(activity.filesDir, VarmlenVpnService.LOG_FILE).writeText("") } catch (_: Throwable) {}
+        invoke.resolve()
+    }
+
     private fun startVpn(args: ConnectArgs) {
         val intent = Intent(activity, VarmlenVpnService::class.java)
         intent.action = VarmlenVpnService.ACTION_CONNECT
@@ -76,6 +91,7 @@ class VpnPlugin(private val activity: Activity) : Plugin(activity) {
         intent.putExtra(VarmlenVpnService.EXTRA_DNS, args.dns)
         intent.putExtra(VarmlenVpnService.EXTRA_APPS, args.apps)
         intent.putExtra(VarmlenVpnService.EXTRA_APPS_ALLOW, args.appsAllow)
+        intent.putExtra(VarmlenVpnService.EXTRA_LOG_LEVEL, args.logLevel)
         // startService (not startForegroundService): we're invoked from the
         // foreground activity, so this is allowed and avoids the strict
         // "must call startForeground within 5s" crash on Android 14+.

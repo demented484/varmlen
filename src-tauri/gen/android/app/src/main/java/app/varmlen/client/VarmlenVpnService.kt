@@ -31,6 +31,8 @@ class VarmlenVpnService : VpnService() {
         const val EXTRA_DNS = "dns"
         const val EXTRA_APPS = "apps"
         const val EXTRA_APPS_ALLOW = "appsAllow"
+        const val EXTRA_LOG_LEVEL = "logLevel"
+        const val LOG_FILE = "varmlen.log"
         private const val CHANNEL = "varmlen_vpn"
         private const val NOTIF_ID = 1
         private const val TUN_ADDR = "10.10.10.2"
@@ -41,11 +43,11 @@ class VarmlenVpnService : VpnService() {
             private set
     }
 
-    /** Append a line to <externalFilesDir>/varmlen.log so issues are visible
-     *  without adb (the user can grab it via Files → Android/data/.../files). */
+    /** Append a line to filesDir/varmlen.log so the in-app log viewer (and Rust)
+     *  can read it without adb. */
     private fun log(msg: String, e: Throwable? = null) {
         try {
-            val f = File(getExternalFilesDir(null), "varmlen.log")
+            val f = File(filesDir, LOG_FILE)
             f.appendText("[${System.currentTimeMillis()}] $msg\n")
             if (e != null) f.appendText(android.util.Log.getStackTraceString(e) + "\n")
         } catch (_: Throwable) {}
@@ -66,7 +68,8 @@ class VarmlenVpnService : VpnService() {
                         intent.getIntExtra(EXTRA_SOCKS_PORT, 2081),
                         intent.getStringExtra(EXTRA_DNS) ?: "1.1.1.1",
                         intent.getStringArrayExtra(EXTRA_APPS) ?: emptyArray(),
-                        intent.getBooleanExtra(EXTRA_APPS_ALLOW, false)
+                        intent.getBooleanExtra(EXTRA_APPS_ALLOW, false),
+                        intent.getStringExtra(EXTRA_LOG_LEVEL) ?: "warn"
                     )
                 } catch (e: Throwable) {
                     log("connect failed", e)
@@ -79,9 +82,9 @@ class VarmlenVpnService : VpnService() {
 
     private fun startAll(
         config: String, socksPort: Int, dns: String,
-        apps: Array<String>, appsAllow: Boolean
+        apps: Array<String>, appsAllow: Boolean, logLevel: String
     ) {
-        log("startAll socksPort=$socksPort dns=$dns apps=${apps.size} allow=$appsAllow")
+        log("startAll socksPort=$socksPort dns=$dns apps=${apps.size} allow=$appsAllow level=$logLevel")
         startForegroundSafe()
 
         // 1) xray as a local SOCKS proxy (the generated config binds 127.0.0.1:socksPort).
@@ -121,12 +124,16 @@ class VarmlenVpnService : VpnService() {
         val yaml = """
             tunnel:
               mtu: $MTU
+              ipv4: $TUN_ADDR
             socks5:
               address: 127.0.0.1
               port: $socksPort
               udp: 'udp'
             misc:
               task-stack-size: 20480
+              tcp-read-write-timeout: 300000
+              udp-read-write-timeout: 60000
+              log-level: $logLevel
         """.trimIndent()
         t2sThread = Thread {
             try {

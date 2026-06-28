@@ -144,6 +144,21 @@ a {
   }
 }
 
+/* Android draws edge-to-edge (status bar over the app); shift the top bars down
+   by the status-bar inset so nothing is hidden under the clock. The app's own
+   dark background fills behind the bar (no opaque strip). Fallback to 30px when
+   the WebView doesn't report the inset. */
+.is-android {
+  --sat: max(env(safe-area-inset-top), 30px);
+}
+.is-android .topbar {
+  padding-top: var(--sat) !important;
+}
+.is-android .page,
+.is-android .scroll {
+  top: calc(var(--sat) + 46px) !important;
+}
+
 /* ---------- common ---------- */
 .btn {
   border: 1px solid var(--border);

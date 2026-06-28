@@ -171,12 +171,29 @@ export function vpnConnect(
   mode: "tun" | "proxy",
   killswitch: boolean,
   allowLan: boolean,
+  logLevel: string,
 ): Promise<HelperResponse> {
-  return invoke<HelperResponse>("vpn_connect", { server, split, mode, killswitch, allowLan });
+  return invoke<HelperResponse>("vpn_connect", {
+    server,
+    split,
+    mode,
+    killswitch,
+    allowLan,
+    logLevel,
+  });
 }
 
 export function vpnDisconnect(): Promise<HelperResponse> {
   return invoke<HelperResponse>("vpn_disconnect");
+}
+
+/** The VPN log (Android: VpnService steps + xray/tun2socks output). */
+export function vpnLog(): Promise<string> {
+  return invoke<string>("vpn_log");
+}
+
+export function clearVpnLog(): Promise<void> {
+  return invoke<void>("clear_vpn_log");
 }
 
 export function vpnStatus(): Promise<HelperResponse> {

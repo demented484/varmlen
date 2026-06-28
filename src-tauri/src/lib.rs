@@ -234,6 +234,8 @@ pub fn run() {
             vpn::grant_caps,
             vpn::tcp_ping_host,
             vpn::proxy_get_ping,
+            vpn::vpn_log,
+            vpn::clear_vpn_log,
             tray::set_tray_status,
             tray::set_close_to_tray,
             tray::set_autostart,

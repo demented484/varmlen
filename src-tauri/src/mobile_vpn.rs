@@ -15,6 +15,7 @@ struct ConnectArgs {
     dns: String,
     apps: Vec<String>,
     apps_allow: bool,
+    log_level: String,
 }
 
 /// Managed handle to the Android plugin.
@@ -38,6 +39,7 @@ pub fn connect<R: Runtime>(
     socks_port: u16,
     apps: Vec<String>,
     apps_allow: bool,
+    log_level: String,
 ) -> Result<(), String> {
     let vpn = app.state::<Vpn<R>>();
     vpn.0
@@ -49,8 +51,31 @@ pub fn connect<R: Runtime>(
                 dns: "1.1.1.1".to_string(),
                 apps,
                 apps_allow,
+                log_level,
             },
         )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Read the on-device VPN log (the VpnService writes it to filesDir).
+pub fn read_log<R: Runtime>(app: &AppHandle<R>) -> Result<String, String> {
+    let vpn = app.state::<Vpn<R>>();
+    vpn.0
+        .run_mobile_plugin::<serde_json::Value>("readLog", ())
+        .map(|v| {
+            v.get("log")
+                .and_then(|l| l.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .map_err(|e| e.to_string())
+}
+
+pub fn clear_log<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let vpn = app.state::<Vpn<R>>();
+    vpn.0
+        .run_mobile_plugin::<serde_json::Value>("clearLog", ())
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

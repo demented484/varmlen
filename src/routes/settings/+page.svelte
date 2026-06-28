@@ -1,12 +1,44 @@
 <script lang="ts">
   import { theme } from "$lib/theme.svelte";
-  import { settings, type VpnMode, type PingMethod } from "$lib/settings.svelte";
+  import { settings, type VpnMode, type PingMethod, type LogLevel } from "$lib/settings.svelte";
   import { i18n, t, LANGUAGES, type Lang } from "$lib/i18n.svelte";
   import { core } from "$lib/core.svelte";
-  import { capsGranted, grantCaps, autostartStatus, setAutostart } from "$lib/api";
+  import { capsGranted, grantCaps, autostartStatus, setAutostart, vpnLog, clearVpnLog } from "$lib/api";
   import Dropdown from "$lib/components/Dropdown.svelte";
   import { onMount } from "svelte";
   import { isAndroid } from "$lib/platform";
+
+  const logLevelOptions = $derived([
+    { value: "debug", label: "debug" },
+    { value: "info", label: "info" },
+    { value: "warning", label: "warning" },
+    { value: "error", label: "error" },
+  ]);
+
+  // In-app log viewer (esp. for Android, where the data folder is hard to reach).
+  let showLog = $state(false);
+  let logText = $state("");
+  let logBusy = $state(false);
+  async function refreshLog() {
+    logBusy = true;
+    try {
+      logText = (await vpnLog()) || "";
+    } catch (e) {
+      logText = e instanceof Error ? e.message : String(e);
+    } finally {
+      logBusy = false;
+    }
+  }
+  async function openLog() {
+    showLog = true;
+    await refreshLog();
+  }
+  async function wipeLog() {
+    try {
+      await clearVpnLog();
+    } catch {}
+    await refreshLog();
+  }
 
   // Autostart lives in ~/.config/autostart (backend is the source of truth);
   // sync the toggles from it on open. `minimized` only applies when enabled.
@@ -470,6 +502,33 @@
     </div>
   {/if}
 
+  <section>
+    <h2>{t("settings.diagnostics")}</h2>
+    <div class="list">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-title">{t("settings.logLevel")}</div>
+          <div class="row-sub muted">{t("settings.logLevelSub")}</div>
+        </div>
+        <Dropdown
+          value={settings.logLevel}
+          options={logLevelOptions}
+          onChange={(v) => settings.setLogLevel(v as LogLevel)}
+          ariaLabel={t("settings.logLevel")}
+        />
+      </div>
+      <button type="button" class="row log-row" onclick={openLog}>
+        <div class="row-text">
+          <div class="row-title">{t("settings.viewLog")}</div>
+          <div class="row-sub muted">{t("settings.viewLogSub")}</div>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+  </section>
+
   <!-- Network permissions (file caps via pkexec) are a desktop concept; on
        Android the VPN consent dialog handles permission per-connect. -->
   {#if !isAndroid}
@@ -510,7 +569,70 @@
 
 </main>
 
+{#if showLog}
+  <div class="modal-backdrop" onclick={() => (showLog = false)} role="presentation">
+    <div
+      class="modal card log-modal"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.key === "Escape" && (showLog = false)}
+      role="dialog"
+      tabindex="-1"
+      aria-modal="true"
+      aria-label={t("settings.viewLog")}
+    >
+      <header class="modal-head">
+        <h2>{t("settings.viewLog")}</h2>
+        <button class="icon-btn" onclick={() => (showLog = false)} aria-label={t("common.close")}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </header>
+      <pre class="log-text">{logText || t("settings.logEmpty")}</pre>
+      <div class="modal-actions">
+        <button class="btn" onclick={wipeLog}>{t("settings.logClear")}</button>
+        <button class="btn btn-primary" onclick={refreshLog} disabled={logBusy}>
+          {t("settings.logRefresh")}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
+  .log-row {
+    width: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .log-modal {
+    width: min(560px, 94vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .log-text {
+    flex: 1;
+    overflow: auto;
+    margin: 8px 0;
+    padding: 10px 12px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-muted);
+  }
   .topbar {
     display: flex;
     align-items: center;

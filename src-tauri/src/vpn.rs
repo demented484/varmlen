@@ -428,6 +428,7 @@ pub async fn vpn_connect(
     mode: String,
     killswitch: bool,
     allow_lan: bool,
+    log_level: Option<String>,
 ) -> Result<HelperResponse, String> {
     // Android: hand the generated config to the VpnService bridge. The native
     // tun + tun2socks + bundled xray live in the Kotlin VpnPlugin; the kill
@@ -446,12 +447,14 @@ pub async fn vpn_connect(
             crate::xray::XRAY_SOCKS_PORT,
             split.apps.clone(),
             apps_allow,
+            log_level.unwrap_or_else(|| "warn".to_string()),
         )?;
         return Ok(HelperResponse::connected(0));
     }
 
     #[cfg(not(target_os = "android"))]
     {
+    let _ = log_level;
     // Hold the op lock for the whole connect so it can't interleave with another
     // connect/disconnect and orphan a tunnel.
     let _op = vpn_op_lock().lock().await;
@@ -661,6 +664,35 @@ pub async fn vpn_status(app: tauri::AppHandle) -> Result<HelperResponse, String>
             return Ok(HelperResponse::connected(pid));
         }
         Ok(HelperResponse::disconnected())
+    }
+}
+
+/// The VPN log shown in the in-app log viewer. On Android the VpnService writes
+/// every step + xray/tun2socks output to a file; on desktop it's xray's stderr.
+#[tauri::command]
+pub async fn vpn_log(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        return crate::mobile_vpn::read_log(&app);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = &app;
+        Ok(std::fs::read_to_string(runtime_dir().join("xray.log")).unwrap_or_default())
+    }
+}
+
+#[tauri::command]
+pub async fn clear_vpn_log(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        return crate::mobile_vpn::clear_log(&app);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = &app;
+        let _ = std::fs::write(runtime_dir().join("xray.log"), "");
+        Ok(())
     }
 }
 

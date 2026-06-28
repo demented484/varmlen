@@ -3,8 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Varmlen</title>
+    <script>
+      // Tag the Android WebView so CSS can add safe-area insets (status / nav
+      // bars) — Android 15 draws the app edge-to-edge.
+      try {
+        if (/Android/i.test(navigator.userAgent)) {
+          document.documentElement.classList.add("is-android");
+        }
+      } catch (e) {}
+    </script>
     <script>
       // One-time rebrand: migrate any legacy `aegisvpn.*` localStorage keys to
       // `varmlen.*`, in place, BEFORE the app bundle (and its stores) load — so

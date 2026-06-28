@@ -5,6 +5,7 @@ export type VpnMode = "tun" | "proxy";
  *  (bypasses the tunnel, works disconnected). `proxy` = an HTTP GET routed
  *  through a throwaway xray per server (via-proxy latency). */
 export type PingMethod = "tcp" | "proxy";
+export type LogLevel = "debug" | "info" | "warning" | "error";
 
 interface Persisted {
   vpnMode: VpnMode;
@@ -13,6 +14,8 @@ interface Persisted {
   pingMethod: PingMethod;
   /** Closing the window hides to the tray (true) vs fully quits (false). */
   closeToTray: boolean;
+  /** Verbosity of the VPN log (xray + tun2socks). */
+  logLevel: LogLevel;
 }
 
 const KEY = "varmlen.settings";
@@ -22,7 +25,10 @@ const DEFAULTS: Persisted = {
   allowLan: true,
   pingMethod: "tcp",
   closeToTray: true,
+  logLevel: "warning",
 };
+
+const LOG_LEVELS: LogLevel[] = ["debug", "info", "warning", "error"];
 
 function load(): Persisted {
   if (!browser) return DEFAULTS;
@@ -36,6 +42,9 @@ function load(): Persisted {
       allowLan: parsed.allowLan ?? DEFAULTS.allowLan,
       pingMethod: parsed.pingMethod === "proxy" ? "proxy" : "tcp",
       closeToTray: parsed.closeToTray ?? DEFAULTS.closeToTray,
+      logLevel: LOG_LEVELS.includes(parsed.logLevel as LogLevel)
+        ? (parsed.logLevel as LogLevel)
+        : DEFAULTS.logLevel,
     };
   } catch {
     return DEFAULTS;
@@ -50,6 +59,7 @@ class SettingsStore {
   allowLan = $state(_initialSettings.allowLan);
   pingMethod = $state<PingMethod>(_initialSettings.pingMethod);
   closeToTray = $state(_initialSettings.closeToTray);
+  logLevel = $state<LogLevel>(_initialSettings.logLevel);
 
   private persist(): void {
     if (!browser) return;
@@ -61,6 +71,7 @@ class SettingsStore {
         allowLan: this.allowLan,
         pingMethod: this.pingMethod,
         closeToTray: this.closeToTray,
+        logLevel: this.logLevel,
       }),
     );
   }
@@ -70,6 +81,7 @@ class SettingsStore {
   setAllowLan(v: boolean): void { this.allowLan = v; this.persist(); }
   setPingMethod(v: PingMethod): void { this.pingMethod = v; this.persist(); }
   setCloseToTray(v: boolean): void { this.closeToTray = v; this.persist(); }
+  setLogLevel(v: LogLevel): void { this.logLevel = v; this.persist(); }
 }
 
 export const settings = new SettingsStore();
