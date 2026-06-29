@@ -1,8 +1,10 @@
 # Windows port (work in progress - branch `windows-port`)
 
-Brings the Varmlen xray VPN client to Windows. Status: **M1 code-complete**, the
-Linux build still compiles clean, but the Windows build is **not yet verified**
-(see "Building" - no Windows machine was available and CI is currently blocked).
+Brings the Varmlen xray VPN client to Windows. Status: **M1 code-complete and the
+Windows NSIS installer cross-builds entirely on Linux** (the MSVC target compiles
++ links and `Varmlen_0.1.1_x64-setup.exe` is produced). The Linux build still
+compiles clean too. Only the runtime data-plane behaviour is unverified (needs a
+real Windows VM + a live server).
 
 ## Architecture
 
@@ -34,14 +36,17 @@ Three bundled binaries are NOT in git - they are fetched at build time:
 `xray.exe` + `wintun.dll` (from XTLS/Xray-core `Xray-windows-64.zip`) and
 `tun2socks.exe` (from xjasonlyu/tun2socks). They go in `src-tauri/cores/`.
 
-**Option A - GitHub Actions (recommended).** `.github/workflows/windows.yml`
-builds + bundles the NSIS installer on a `windows-latest` runner and uploads it
-as an artifact on every push to `windows-port`. It currently fails because the
-GitHub account's Actions are **locked for a billing issue** - resolve that in
-GitHub Settings -> Billing, then re-run the workflow and download
-`Varmlen_*-setup.exe` from the run's artifacts.
+**Option A - cross-build on Linux (what we use).** `scripts/cross-build-windows.sh`
+produces the NSIS installer with no Windows machine and no CI. One-time toolchain
+setup is documented at the top of that script (cargo-xwin + clang/nasm/llvm +
+wine + a native `makensis` fed the prebuilt NSIS stubs). Output:
+`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Varmlen_*-setup.exe`.
 
-**Option B - build inside the Windows VM** (`~/win-vm`, see its README):
+**Option B - GitHub Actions.** `.github/workflows/windows.yml` builds on a
+`windows-latest` runner (native MSVC, no cross-compile hacks). Disabled while the
+account's Actions are billing-locked; re-enable by fixing GitHub billing.
+
+**Option C - build inside the Windows VM** (`~/win-vm`, see its README):
 1. Install Rust (rustup), Node 20, and the MSVC C++ build tools (Visual Studio
    Build Tools, "Desktop development with C++"). WebView2 ships with Windows 11.
 2. Clone this repo, `git checkout windows-port`.
@@ -51,10 +56,11 @@ GitHub Settings -> Billing, then re-run the workflow and download
 
 ## Verified vs not
 
-- Verified: the Linux build still compiles (`cargo check`) after the cfg split,
-  and the `&[&str]` command-arg coercions used in `win_vpn.rs` compile.
-- NOT verified (no Windows / no CI yet): the Windows target compile of
-  `win_vpn.rs`, and all runtime behaviour.
+- Verified: the Linux build compiles after the cfg split; the **Windows MSVC
+  target compiles + links** (`win_vpn.rs` + all arms) via cargo-xwin; the **NSIS
+  installer bundles** (cross-built on Linux).
+- NOT verified (needs a real Windows VM + a live vless/reality server): all
+  runtime behaviour - adapter creation, routing, anti-loop, DNS, kill switch.
 
 ## VM-validate / v0.2 TODO (cannot be done without a real Windows + a live server)
 
